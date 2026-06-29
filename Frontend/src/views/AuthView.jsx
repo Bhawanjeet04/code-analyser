@@ -1,247 +1,145 @@
-import { useState } from "react";
+// Frontend/src/views/AuthView.jsx
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom"; // 1. Add this import
+import Button from "../components/Button";
+import Card from "../components/Card";
+import Input from "../components/Input";
 
-const NAV_LINKS = [];
-const CODE_TABS = ["Hello.cpp"];
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// Only show first 7 lines — cropped, no scroll
-const CODE_LINES = [
-  { num: 1, content: <span className="text-slate-400">// Imports</span> },
-  {
-    num: 2,
-    content: (
-      <>
-        <span className="text-purple-400">import</span>{" "}
-        <span className="text-slate-200">mongoose,</span>{" "}
-        <span className="text-slate-400">{"{ "}</span>
-        <span className="text-yellow-300">Schema</span>
-        <span className="text-slate-400">{" }"}</span>{" "}
-        <span className="text-purple-400">from</span>{" "}
-        <span className="text-green-400">'mongoose'</span>
-      </>
-    ),
-    cursor: "mike",
-  },
-  { num: 3, content: null },
-  { num: 4, content: <span className="text-slate-400">// Collection name</span> },
-  {
-    num: 5,
-    content: (
-      <>
-        <span className="text-purple-400">export</span>{" "}
-        <span className="text-purple-400">const</span>{" "}
-        <span className="text-blue-300">collection</span>{" "}
-        <span className="text-slate-400">=</span>{" "}
-        <span className="text-green-400">'Product'</span>
-        <span className="text-slate-200">|</span>
-      </>
-    ),
-  },
-  { num: 6, content: null },
-  {
-    num: 7,
-    content: <span className="text-slate-400">// Schema</span>,
-    cursor: "rob",
-  },
-];
+export default function AuthView({ mode = "login", onAuthSuccess }) {
+  const navigate = useNavigate(); // 2. Initialize the navigation hook
+  const [isLogin, setIsLogin] = useState(mode !== "signup");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-function GridBackground() {
-  return (
-    <div
-      className="absolute inset-0 opacity-[0.07]"
-      style={{
-        backgroundImage:
-          "linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)",
-        backgroundSize: "40px 40px",
-      }}
-    />
-  );
-}
+  useEffect(() => {
+    setIsLogin(mode !== "signup");
+  }, [mode]);
 
-function Cursor({ label, color }) {
-  const colors = {
-    mike: { bg: "bg-indigo-400", text: "text-indigo-900" },
-    rob: { bg: "bg-amber-300", text: "text-amber-900" },
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+
+      onAuthSuccess?.(data.userId || data.user?.id);
+    } catch (err) {
+      setError("Could not reach the server. Is the backend running?");
+    } finally {
+      setLoading(false);
+    }
   };
-  const c = colors[color];
-  return (
-    <span className="relative inline-flex items-center ml-1 align-middle">
-      <span
-        className="inline-block w-0.5 h-4 rounded-sm animate-pulse"
-        style={{ background: color === "mike" ? "#818cf8" : "#fcd34d" }}
-      />
-      <span
-        className={`absolute left-2 -top-7 ${c.bg} ${c.text} text-xs font-semibold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap`}
-      >
-        {label}
-      </span>
-    </span>
-  );
-}
 
-export default function MooraLanding() {
-  const [activeTab, setActiveTab] = useState(0);
+  const handleGoogleFederation = () => {
+    window.location.href = `${API_BASE}/api/auth/google`;
+  };
 
   return (
-    <div
-      className="h-screen w-screen overflow-hidden font-sans"
-      style={{
-        background: "linear-gradient(160deg, #0f0f18 0%, #13111f 60%, #1a1430 100%)",
-      }}
-    >
-      <div className="h-full w-full flex flex-col p-3 overflow-hidden">
-        <div
-          className="flex-1 rounded-2xl flex flex-col overflow-hidden"
-          style={{
-            boxShadow: "0 0 0 1px rgba(140,120,255,0.18), 0 0 60px 10px rgba(120,100,255,0.08)",
-            background: "linear-gradient(160deg, #0f0f1a 0%, #110f1e 100%)",
-          }}
+    <div className="min-h-screen w-full bg-[#0a0a10] flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        {/* 3. Update this button to navigate back to the root route directly */}
+        <button
+          onClick={() => navigate("/")}
+          className="mb-6 text-sm text-slate-500 hover:text-slate-300 transition-colors font-medium cursor-pointer"
         >
-          {/* NAV */}
-          <nav className="flex items-center justify-between px-8 py-4 relative z-10 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
-                <rect x="0" y="0" width="6" height="6" rx="1" fill="white" opacity="0.9" />
-                <rect x="8" y="0" width="6" height="6" rx="1" fill="white" opacity="0.5" />
-                <rect x="0" y="8" width="6" height="6" rx="1" fill="white" opacity="0.5" />
-                <rect x="8" y="8" width="6" height="6" rx="1" fill="white" opacity="0.9" />
-                <rect x="16" y="0" width="6" height="6" rx="1" fill="white" opacity="0.2" />
-                <rect x="16" y="8" width="6" height="6" rx="1" fill="white" opacity="0.2" />
-              </svg>
-              <span className="text-white text-xl font-semibold tracking-tight">moora</span>
-            </div>
+          ← Back to home
+        </button>
 
-            <ul className="hidden md:flex items-center gap-8">
-              {NAV_LINKS.map((link) => (
-                <li key={link}>
-                  <a href="#" className="text-slate-400 hover:text-white text-sm font-medium transition-colors duration-200">
-                    {link}
-                  </a>
-                </li>
-              ))}
-            </ul>
+        <Card className="p-8 border border-slate-800/80 bg-[#12111f] rounded-xl shadow-2xl">
+          <h1 className="text-2xl font-semibold text-white mb-1">
+            {isLogin ? "Welcome back" : "Create your account"}
+          </h1>
+          <p className="text-sm text-slate-400 mb-6">
+            {isLogin
+              ? "Log in to keep collaborating on your code."
+              : "Start writing code together in minutes."}
+          </p>
 
-            <button className="border border-slate-600 hover:border-slate-400 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all duration-200 hover:bg-white/5">
-              Log in
-            </button>
-          </nav>
+          <button
+            type="button"
+            onClick={handleGoogleFederation}
+            className="w-full flex items-center justify-center gap-3 h-11 border border-slate-700/60 rounded-lg text-xs font-semibold text-slate-200 bg-white/5 hover:bg-white/10 transition-all cursor-pointer mb-5"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path
+                fill="#EA4335"
+                d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.2-5.136 4.2A5.64 5.64 0 0 1 8.36 13c0-3.11 2.522-5.63 5.63-5.63c1.397 0 2.673.513 3.657 1.358l3.08-3.08C18.823 3.93 16.545 3 13.99 3C8.472 3 4 7.472 4 12.99c0 5.517 4.472 9.99 9.99 9.99c5.772 0 9.99-4.067 9.99-9.99c0-.68-.08-1.3-.23-1.705H12.24Z"
+              />
+            </svg>
+            Continue with Google
+          </button>
 
-          {/* HERO */}
-          <main className="relative flex-1 flex flex-col items-center justify-center px-6 pb-0 overflow-hidden">
-            <GridBackground />
+          <div className="flex items-center my-5 opacity-30">
+            <div className="flex-1 h-[1px] bg-slate-600" />
+            <span className="text-[10px] tracking-wider uppercase font-bold px-3 text-slate-400">OR</span>
+            <div className="flex-1 h-[1px] bg-slate-600" />
+          </div>
 
-            <div className="relative z-10 text-center max-w-3xl mx-auto w-full flex flex-col items-center">
-              {/* Headline */}
-              <h1 className="text-5xl md:text-6xl font-light leading-[1.08] tracking-tight mb-4">
-                <span style={{ color: "#e8d5a3" }}>Great code </span>
-                <span style={{
-                  background: "linear-gradient(135deg, #c4b5fd 0%, #a78bfa 50%, #8b7cf8 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}>comes</span>
-                <br />
-                <span style={{ color: "#e8d5a3" }}>from </span>
-                <span className="inline-block mx-1 align-middle text-5xl md:text-5xl"></span>
-                <span style={{
-                  background: "linear-gradient(135deg, #c4b5fd 0%, #a78bfa 50%, #8b7cf8 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}>teamwork.</span>
-              </h1>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Input
+              label="Email Address"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="!bg-[#19182b] !border-slate-800 text-sm h-10 rounded-lg"
+            />
+            <Input
+              label="Password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="!bg-[#19182b] !border-slate-800 text-sm h-10 rounded-lg"
+            />
 
-              <p className="text-slate-400 text-base leading-relaxed mb-7 max-w-xl mx-auto">
-                Work together to write clean, efficient, and reliable code.<br />
-                Solve challenges faster and smarter through collaboration.
+            {error && (
+              <p className="text-red-400 text-xs font-light bg-red-500/10 border border-red-500/10 rounded p-2.5 mt-1">
+                {error}
               </p>
+            )}
 
-              {/* CTAs */}
-              <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
-                <button
-                  className="px-7 py-2.5 rounded-lg font-semibold text-sm text-slate-900 transition-all duration-200 hover:scale-105 active:scale-95"
-                  style={{ background: "#e8d5a3" }}
-                >
-                  Start free trial
-                </button>
-                <button className="px-7 py-2.5 rounded-lg font-semibold text-sm text-white border border-slate-600 hover:border-slate-400 hover:bg-white/5 transition-all duration-200">
-                  Get a demo
-                </button>
-              </div>
-
-              {/* CODE EDITOR — cropped, no scroll, fades out at bottom */}
-              <div
-                className="relative w-full max-w-2xl mx-auto rounded-xl text-left overflow-hidden"
-                style={{
-                  background: "#111118",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  boxShadow: "0 0 0 1px rgba(140,120,255,0.1), 0 24px 60px rgba(0,0,0,0.6)",
-                }}
-              >
-                {/* Tab bar */}
-                <div
-                  className="flex items-center px-3 pt-2 gap-1 border-b border-white/[0.06] shrink-0"
-                  style={{ background: "#0d0d14" }}
-                >
-                  {CODE_TABS.map((tab, i) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(i)}
-                      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors duration-150 ${
-                        activeTab === i
-                          ? "bg-[#111118] text-slate-200 border-t border-x border-white/[0.08]"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
-                    >
-                      {i === 0 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#f97316" opacity="0.8" />
-                          <text x="2" y="9" fontSize="7" fill="white" fontWeight="bold">js</text>
-                        </svg>
-                      )}
-                      {i === 1 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#3b82f6" opacity="0.8" />
-                          <text x="1.5" y="9" fontSize="6" fill="white" fontWeight="bold">md</text>
-                        </svg>
-                      )}
-                      {i === 2 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#6b7280" opacity="0.8" />
-                          <text x="1.5" y="9" fontSize="6" fill="white" fontWeight="bold">gi</text>
-                        </svg>
-                      )}
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Code lines — no overflow, just cropped */}
-                <div className="pt-3 pb-0 px-2 font-mono text-sm leading-7 select-none">
-                  {CODE_LINES.map((line) => (
-                    <div key={line.num} className="flex items-center group">
-                      <span className="w-10 text-right text-slate-600 text-xs pr-4 shrink-0">
-                        {line.num}
-                      </span>
-                      <span className="flex-1 text-slate-300 whitespace-nowrap">
-                        {line.content}
-                        {line.cursor === "mike" && <Cursor label="Mike" color="mike" />}
-                        {line.cursor === "rob" && <Cursor label="Rob" color="rob" />}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Fade-out gradient at bottom — simulates crop */}
-                <div
-                  className="h-14 w-full"
-                  style={{
-                    background: "linear-gradient(to bottom, transparent, #111118)",
-                  }}
-                />
-              </div>
+            <div className="mt-2">
+              <Button type="submit" variant="primary" disabled={loading} className="w-full h-10 font-bold text-xs uppercase tracking-wider">
+                {loading ? "Please wait…" : isLogin ? "Log in" : "Sign up"}
+              </Button>
             </div>
-          </main>
-        </div>
+          </form>
+
+          <p className="text-sm text-slate-400 mt-6 text-center">
+            {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+            <button
+              onClick={() => {
+                setError("");
+                setIsLogin((v) => !v);
+              }}
+              className="text-[#c4b5fd] font-medium hover:underline cursor-pointer ml-1"
+            >
+              {isLogin ? "Sign up" : "Log in"}
+            </button>
+          </p>
+        </Card>
       </div>
     </div>
   );
