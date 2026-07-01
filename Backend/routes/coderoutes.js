@@ -5,7 +5,8 @@ import {
   analyzeCode, 
   saveWorkspaceCode, 
   loadWorkspaceCode,
-  loadAllFiles // 🚀 FIXED: Explicitly added this missing import!
+  loadAllFiles, // 🚀 FIXED: Explicitly added this missing import!
+  deleteFile
 } from '../controllers/codeController.js';
 
 const router = express.Router();
@@ -18,5 +19,6 @@ router.post('/analyze', analyzeCode);
 router.post('/save', saveWorkspaceCode);
 router.get('/load', loadWorkspaceCode);
 router.get('/files', loadAllFiles);
+router.delete('/delete', deleteFile);
 
 export default router;

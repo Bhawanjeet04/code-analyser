@@ -167,10 +167,38 @@ export const loadAllFiles = async (req, res) => {
   }
 
   try {
-    const files = await Code.find({ userId, roomId: roomId || null }).sort({ updatedAt: -1 });
+    const files = await Code.find({ userId, roomId: roomId || null }).sort({ createdAt: 1 });
     return res.status(200).json({ files });
   } catch (error) {
     console.error('Database Fetch Files Error:', error);
     return res.status(500).json({ error: 'Failed to extract directory tree.' });
+  }
+};
+
+
+export const deleteFile = async (req, res) => {
+  try {
+    // Look in query parameters first, then fall back to body parameters
+    const userId = req.query.userId || req.body.userId;
+    const roomId = req.query.roomId || req.body.roomId;
+    const fileName = req.query.fileName || req.body.fileName;
+
+    if (!userId || !fileName) {
+      return res.status(400).json({ error: 'userId and fileName are required for deletion.' });
+    }
+
+    const result = await Code.findOneAndDelete({
+      userId: userId,
+      roomId: roomId || null,
+      fileName: fileName.trim()
+    });
+
+    if (!result) {
+      return res.status(404).json({ error: 'File not found in database.' });
+    }
+
+    return res.status(200).json({ message: 'File deleted cleanly.' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
