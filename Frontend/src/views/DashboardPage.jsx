@@ -10,6 +10,7 @@ import { FiPlus } from "react-icons/fi";
 import { FiLogOut } from "react-icons/fi";
 import { FaRegFileCode } from "react-icons/fa";
 import { FaCode } from "react-icons/fa6";
+import { FaUserCircle } from "react-icons/fa";
 
 const BOILERPLATE_MAP = {
   cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from C++" << endl;\n    return 0;\n}',
@@ -40,14 +41,27 @@ export default function DashboardPage({ userSession, onLogout }) {
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Active Refs
   const editorRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const activeDockIcon = 'Files';
+
+  // Outside click listener handler for profile context menu
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowProfileDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchWorkspaceDirectory = async (shouldLoadFirst = false) => {
     if (!userSession) return;
@@ -432,12 +446,33 @@ export default function DashboardPage({ userSession, onLogout }) {
           )}
 
           <div className="h-4 w-[1px] bg-[#1f1f2e] mx-1" />
-          <button onClick={onLogout}
-            title="Sign Out"
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 cursor-pointer"
-          >
-            <FiLogOut size={18} />
-          </button>
+          
+          {/* USER PROFILE DROPDOWN ATTACHMENT */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+              title="User Account Menu"
+              className="h-10 w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 transition-all duration-200 cursor-pointer focus:outline-none"
+            >
+              <FaUserCircle size={22} />
+            </button>
+
+            {showProfileDropdown && (
+              <div className="absolute right-0 mt-2 w-48 rounded-lg bg-[#12111f] border border-[#1b1b2c] p-1 shadow-2xl z-50 animate-fadeIn">
+                <div className="px-3 py-2 border-b border-[#1b1b2c] text-left">
+                  {/* <p className="text-[10px] font-bold text-slate-500 tracking-wider">Signed in as</p> */}
+                  <p className="text-xs font-medium text-slate-200 truncate mt-0.5">{userSession || 'Active User'}</p>
+                </div>
+                <button
+                  onClick={onLogout}
+                  className="w-full h-9 mt-1 flex items-center gap-2 px-3 text-left text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors duration-150 cursor-pointer"
+                >
+                  <FiLogOut size={14} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
