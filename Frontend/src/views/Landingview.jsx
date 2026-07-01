@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FaCode } from "react-icons/fa6";
 
 const NAV_LINKS = [];
 const CODE_TABS = ["Hello.cpp"];
@@ -101,15 +102,8 @@ export default function LandingView() {
           {/* NAV */}
           <nav className="flex items-center justify-between px-8 py-4 relative z-10 shrink-0">
             <div className="flex items-center gap-2.5">
-              <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
-                <rect x="0" y="0" width="6" height="6" rx="1" fill="white" opacity="0.9" />
-                <rect x="8" y="0" width="6" height="6" rx="1" fill="white" opacity="0.5" />
-                <rect x="0" y="8" width="6" height="6" rx="1" fill="white" opacity="0.5" />
-                <rect x="8" y="8" width="6" height="6" rx="1" fill="white" opacity="0.9" />
-                <rect x="16" y="0" width="6" height="6" rx="1" fill="white" opacity="0.2" />
-                <rect x="16" y="8" width="6" height="6" rx="1" fill="white" opacity="0.2" />
-              </svg>
-              <span className="text-white text-xl font-semibold tracking-tight">CoderHub</span>
+              <FaCode className="text-xl text-[#8B5CF6]" />
+              <span className="text-white text-xl font-semibold tracking-tight">CodeLab</span>
             </div>
 
             <ul className="hidden md:flex items-center gap-8">

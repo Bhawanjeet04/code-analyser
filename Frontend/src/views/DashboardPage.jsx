@@ -1,4 +1,3 @@
-// Frontend/src/views/DashboardPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
@@ -6,57 +5,49 @@ import ReactMarkdown from 'react-markdown';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { MonacoBinding } from 'y-monaco';
+import { IoCloudUploadOutline } from "react-icons/io5";
+import { FiPlus } from "react-icons/fi";
+import { FiLogOut } from "react-icons/fi";
+import { FaRegFileCode } from "react-icons/fa";
+import { FaCode } from "react-icons/fa6";
 
 const BOILERPLATE_MAP = {
-  cpp: '#include <iostream>\n\nint main() {\n    std::cout << "Hello from C++ G++ 15!" << std::endl;\n    return 0;\n}',
-  python: 'print("Hello from Python 3.14!")',
-  javascript: 'console.log("Hello from JavaScript via Deno!");',
-  java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java OpenJDK 25!");\n    }\n}'
-};
-
-const DISPLAY_LANG_MAP = {
-  cpp: 'C++ 20',
-  python: 'Python 3',
-  javascript: 'JavaScript',
-  java: 'Java'
+  cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from C++" << endl;\n    return 0;\n}',
+  python: 'print("Hello from Python")',
+  javascript: 'console.log("Hello from JavaScript");',
+  java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Java");\n    }\n}'
 };
 
 export default function DashboardPage({ userSession, onLogout }) {
   const { roomId } = useParams(); 
   const navigate = useNavigate();
 
+  // Active States
   const [activeTab, setActiveTab] = useState('editor'); 
   const [language, setLanguage] = useState('cpp');
   const [editorCode, setEditorCode] = useState(BOILERPLATE_MAP.cpp);
   const [fileCode, setFileCode] = useState('// Your uploaded local file stream context read-only...');
   const [fileName, setFileName] = useState('main.cpp');
+  const [openTabs, setOpenTabs] = useState([]); // Tracks currently open files in tab bar
   const [stdin, setStdin] = useState('');
-  const [output, setOutput] = useState('$ Terminal initialized. Ready to execute code logs...');
+  const [output, setOutput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
-  const [shareUrl, setShareUrl] = useState('');
-
-  const [saveStatus, setSaveStatus] = useState('Saved to cloud');
-  const [isSaving, setIsSaving] = useState(false);
-
-  const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAiDrawer, setShowAiDrawer] = useState(false);
-  const [activeDockIcon, setActiveIcon] = useState('Files');
-
   const [fileList, setFileList] = useState([]);
   const [newFileName, setNewFileName] = useState('');
   const [showNewFileModal, setShowNewFileModal] = useState(false);
-
-  // 🚀 FIXED: Gatekeeper state flag preventing empty saves from overwriting cloud text
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  // Active Refs
   const editorRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
-  const dropdownRef = useRef(null);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const activeDockIcon = 'Files';
 
   const fetchWorkspaceDirectory = async (shouldLoadFirst = false) => {
     if (!userSession) return;
@@ -66,21 +57,24 @@ export default function DashboardPage({ userSession, onLogout }) {
       if (res.ok && data.files) {
         setFileList(data.files);
         
-        // If files exist for this workspace/room context, rehydrate them
         if (data.files.length > 0 && (shouldLoadFirst || !editorRef.current)) {
           const targetFile = data.files.find(f => f.fileName === fileName) || data.files[0];
           setFileName(targetFile.fileName);
           setLanguage(targetFile.language);
           setEditorCode(targetFile.codeContent);
+          
+          // Seed initial open tabs with the default active file
+          setOpenTabs([targetFile]);
+
           if (editorRef.current) {
             editorRef.current.setValue(targetFile.codeContent);
           }
         }
-        setIsHydrated(true); // Re-hydration completed safely
+        setIsHydrated(true); 
       }
     } catch (err) {
       console.error("Directory tree pull exception:", err);
-      setIsHydrated(true); // Release lock on network crash to allow standard functionality
+      setIsHydrated(true); 
     }
   };
 
@@ -88,25 +82,17 @@ export default function DashboardPage({ userSession, onLogout }) {
     setIsHydrated(false);
     fetchWorkspaceDirectory(true);
 
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowLangDropdown(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
       cleanUpCollaboration();
     };
   }, [roomId, userSession]);
 
   // Background Auto-Save Debouncer Loop
   useEffect(() => {
-    if (activeTab === 'upload' || !isHydrated) return; // 🚀 FIXED: Block writes until client has fully hydrated
+    if (activeTab === 'upload' || !isHydrated || !fileName) return; 
     
-    setSaveStatus('Typing...');
     const delayDebounceTimer = setTimeout(() => {
-      triggerManualWorkspaceSave(true);
+      triggerBackgroundWorkspaceSave();
     }, 1500); 
 
     return () => clearTimeout(delayDebounceTimer);
@@ -126,27 +112,25 @@ export default function DashboardPage({ userSession, onLogout }) {
 
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor;
-    if (!roomId) return;
-    initializeYjsSync(editor);
+    if (!roomId || !fileName) return;
+    initializeYjsSync(editor, fileName, language);
   };
 
-  const initializeYjsSync = (editor) => {
+  const initializeYjsSync = (editor, currentName, currentLang) => {
     cleanUpCollaboration();
     const ydoc = new Y.Doc();
     const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:5000';
     
-    // Ensure room context paths are cleanly separated from the extension suffix
-    const uniqueChannelName = `${roomId}-${fileName}`;
+    const uniqueChannelName = `${roomId}-${currentName}`;
     const provider = new WebsocketProvider(WS_BASE, uniqueChannelName, ydoc);
     providerRef.current = provider;
 
     const ytext = ydoc.getText('monaco');
     
-    // Handle loading local editor content if Yjs document is fresh/empty
     provider.on('sync', (isSynced) => {
       if (isSynced && ytext.toString() === '') {
         const currentLocalValue = editor.getValue();
-        if (currentLocalValue && currentLocalValue !== BOILERPLATE_MAP[language]) {
+        if (currentLocalValue && currentLocalValue !== BOILERPLATE_MAP[currentLang]) {
           ytext.insert(0, currentLocalValue);
         }
       }
@@ -157,11 +141,67 @@ export default function DashboardPage({ userSession, onLogout }) {
   };
 
   const handleSelectFileNode = (fileRecord) => {
+    // Cache the active tab's modifications locally before changing files
+    if (editorRef.current && fileName) {
+      const currentCode = editorRef.current.getValue();
+      setFileList(prev => prev.map(f => f.fileName === fileName ? { ...f, codeContent: currentCode } : f));
+    }
+
+    // Add file to tabs pool if it's not already open
+    setOpenTabs(prev => {
+      if (prev.some(t => t.fileName === fileRecord.fileName)) return prev;
+      return [...prev, fileRecord];
+    });
+
     setFileName(fileRecord.fileName);
     setLanguage(fileRecord.language);
     setEditorCode(fileRecord.codeContent);
     if (editorRef.current) {
       editorRef.current.setValue(fileRecord.codeContent);
+    }
+
+    // Re-initialize dynamic session synchronization details for the new file channel
+    if (roomId && editorRef.current) {
+      initializeYjsSync(editorRef.current, fileRecord.fileName, fileRecord.language);
+    }
+  };
+
+  const handleCloseTab = (e, tabToClose) => {
+    e.stopPropagation(); // Avoid triggering file selection mechanics on the closed tab
+    
+    const tabIndex = openTabs.findIndex(t => t.fileName === tabToClose.fileName);
+    const updatedTabs = openTabs.filter(t => t.fileName !== tabToClose.fileName);
+    setOpenTabs(updatedTabs);
+
+    // If we closed the file we are currently looking at, switch focus automatically
+    if (fileName === tabToClose.fileName) {
+      if (updatedTabs.length > 0) {
+        const nextActiveTab = updatedTabs[tabIndex - 1] || updatedTabs[0];
+        
+        // Find latest local buffer content
+        const matchedFile = fileList.find(f => f.fileName === nextActiveTab.fileName);
+        const targetCode = matchedFile ? matchedFile.codeContent : nextActiveTab.codeContent;
+
+        setFileName(nextActiveTab.fileName);
+        setLanguage(nextActiveTab.language);
+        setEditorCode(targetCode);
+        
+        if (editorRef.current) {
+          editorRef.current.setValue(targetCode);
+        }
+        if (roomId && editorRef.current) {
+          initializeYjsSync(editorRef.current, nextActiveTab.fileName, nextActiveTab.language);
+        }
+      } else {
+        // Clear workspace view state entirely if zero tabs are open
+        setFileName('');
+        setLanguage('');
+        setEditorCode('');
+        if (editorRef.current) {
+          editorRef.current.setValue('');
+        }
+        cleanUpCollaboration();
+      }
     }
   };
 
@@ -176,15 +216,18 @@ export default function DashboardPage({ userSession, onLogout }) {
     else if (ext === 'js') derivedLang = 'javascript';
     else if (ext === 'java') derivedLang = 'java';
 
+    const newFileObj = { fileName: name, language: derivedLang, codeContent: BOILERPLATE_MAP[derivedLang] };
+    
+    setOpenTabs(prev => [...prev, newFileObj]);
     setFileName(name);
     setLanguage(derivedLang);
     setEditorCode(BOILERPLATE_MAP[derivedLang]);
+    
     if (editorRef.current) {
       editorRef.current.setValue(BOILERPLATE_MAP[derivedLang]);
     }
     setNewFileName('');
     setShowNewFileModal(false);
-    setSaveStatus('Saving changes...');
 
     try {
       await fetch(`${API_BASE}/api/code/save`, {
@@ -200,14 +243,12 @@ export default function DashboardPage({ userSession, onLogout }) {
       });
       fetchWorkspaceDirectory(false); 
     } catch (err) {
-      setSaveStatus('Save Failed');
+      console.error("Failed to create file asset on remote workspace", err);
     }
   };
 
-  const triggerManualWorkspaceSave = async (isAutoSave = false) => {
-    if (!userSession || !isHydrated) return; // 🚀 FIXED: Guard clause against premature saves
-    if (!isAutoSave) setIsSaving(true);
-    setSaveStatus('Saving changes...');
+  const triggerBackgroundWorkspaceSave = async () => {
+    if (!userSession || !isHydrated || !fileName) return; 
 
     const currentCode = editorRef.current ? editorRef.current.getValue() : editorCode;
 
@@ -225,27 +266,18 @@ export default function DashboardPage({ userSession, onLogout }) {
       });
 
       if (res.ok) {
-        setSaveStatus('Saved to cloud');
-        if (isAutoSave) fetchWorkspaceDirectory(false); 
-      } else {
-        setSaveStatus('Save Failed');
+        fetchWorkspaceDirectory(false); 
       }
     } catch (err) {
-      setSaveStatus('Offline (unsaved)');
-    } finally {
-      if (!isAutoSave) setIsSaving(false);
+      console.error("Workspace synchronization dropped offline", err);
     }
   };
 
   const handleInitializeCollaboration = async () => {
     const uniqueRoomId = `room-${Math.random().toString(36).substring(2, 11)}`;
-    const fullUrl = `${window.location.origin}/room/${uniqueRoomId}`;
-    
     const currentCode = editorRef.current ? editorRef.current.getValue() : editorCode;
-    setSaveStatus('Creating room...');
     
     try {
-      // Seed the database with the current file snapshot using the new room ID
       await fetch(`${API_BASE}/api/code/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,7 +290,6 @@ export default function DashboardPage({ userSession, onLogout }) {
         })
       });
 
-      setShareUrl(fullUrl);
       navigate(`/room/${uniqueRoomId}`);
     } catch (err) {
       console.error("Failed to seed room code structure:", err);
@@ -280,8 +311,9 @@ export default function DashboardPage({ userSession, onLogout }) {
   };
 
   const handleRunCompiler = async () => {
+    if (!fileName) return;
     setIsExecuting(true);
-    setOutput('> Executing script binary payload inside secure sandbox...');
+    setOutput('> Executing Code...');
     
     const targetPayload = activeTab === 'editor' 
       ? (editorRef.current ? editorRef.current.getValue() : editorCode)
@@ -301,7 +333,7 @@ export default function DashboardPage({ userSession, onLogout }) {
       const data = await res.json();
 
       if (!res.ok) {
-        setOutput(`❌ Error executing payload:\n${data.error || 'Execution failure.'}`);
+        setOutput(` Error executing the code:\n${data.error || 'Execution failure.'}`);
         return;
       }
 
@@ -311,13 +343,14 @@ export default function DashboardPage({ userSession, onLogout }) {
         setOutput(data.stdout || '> Process exited successfully with no output streams.');
       }
     } catch (err) {
-      setOutput('❌ Connection Failure: Unable to establish link with compilation gateway.');
+      setOutput('Connection Failure');
     } finally {
       setIsExecuting(false);
     }
   };
 
   const handleTriggerAiAnalysis = async () => {
+    if (!fileName) return;
     setIsAnalyzing(true);
     setShowAiDrawer(true);
     setAiAnalysis('### ⚡ Gathering telemetry metrics...\n> Sending source tokens to Gemini AI optimization nodes...');
@@ -352,12 +385,15 @@ export default function DashboardPage({ userSession, onLogout }) {
     if (editorRef.current) {
       editorRef.current.setValue(BOILERPLATE_MAP[lang]);
     }
-    setShowLangDropdown(false);
     
-    if (lang === 'cpp') setFileName('main.cpp');
-    else if (lang === 'python') setFileName('main.py');
-    else if (lang === 'javascript') setFileName('main.js');
-    else if (lang === 'java') setFileName('Main.java');
+    let newName = 'main.cpp';
+    if (lang === 'cpp') newName = 'main.cpp';
+    else if (lang === 'python') newName = 'main.py';
+    else if (lang === 'javascript') newName = 'main.js';
+    else if (lang === 'java') newName = 'Main.java';
+    
+    setFileName(newName);
+    setOpenTabs(prev => prev.map(t => t.fileName === fileName ? { ...t, fileName: newName, language: lang } : t));
   };
 
   return (
@@ -367,55 +403,19 @@ export default function DashboardPage({ userSession, onLogout }) {
       <header className="h-14 border-b border-[#1b1b24] bg-[#0c0c14] flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-            <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
-              <rect width="6" height="6" rx="1.5" fill="#8B5CF6" />
-              <rect x="8" width="6" height="6" rx="1.5" fill="white" opacity="0.4" />
-              <rect y="8" width="6" height="6" rx="1.5" fill="white" opacity="0.4" />
-              <rect x="8" y="8" width="6" height="6" rx="1.5" fill="#8B5CF6" />
-            </svg>
-            <span className="text-sm font-bold tracking-tight text-white font-sohne">CoderHub</span>
-            <span className="text-[10px] font-bold text-[#818cf8] bg-[#818cf8]/10 border border-[#818cf8]/20 px-2 py-0.5 rounded uppercase tracking-wider scale-90">
-              {roomId ? 'Live Room' : 'Standalone IDE'}
+            <FaCode className="text-xl text-[#8B5CF6]" />
+            <span className="text-sm font-bold tracking-tight text-white font-sohne">
+              CodeLab
             </span>
           </div>
-
-          <div className="flex items-center bg-[#13131f] border border-[#1f1f2e] p-0.5 rounded-lg h-9">
-            <button
-              onClick={() => setActiveTab('editor')}
-              className={`px-3 h-full rounded-md text-xs font-medium transition-all cursor-pointer ${
-                activeTab === 'editor' ? 'bg-[#252538] text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Code Editor Terminal
-            </button>
-          </div>
-
-          <span className="text-[11px] text-slate-500 font-medium font-mono hidden md:inline bg-white/5 border border-white/5 px-2 py-1 rounded">
-            {saveStatus === 'Saved to cloud' && '● '} {saveStatus}
-          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => triggerManualWorkspaceSave(false)}
-            disabled={isSaving}
-            className="h-9 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 border border-purple-500/30 text-xs font-bold px-3.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            {isSaving ? 'Saving...' : '💾 Save Project'}
-          </button>
-
-          <button
-            onClick={handleTriggerAiAnalysis}
-            disabled={isAnalyzing}
-            className="h-9 bg-[#10b981]/10 hover:bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/30 text-xs font-bold px-3.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            {isAnalyzing ? 'Auditing...' : '✨ Analyze with Gemini'}
-          </button>
-
           {!roomId ? (
             <button
               onClick={handleInitializeCollaboration}
-              className="h-9 bg-gradient-to-r from-[#6366f1] to-[#7c3aed] hover:opacity-90 text-white text-xs font-bold px-4 rounded-lg transition-all shadow-md cursor-pointer tracking-wide"
+              disabled={!fileName}
+              className="h-9 bg-gradient-to-r from-[#6366f1] to-[#7c3aed] hover:opacity-90 text-white text-xs font-bold px-4 rounded-lg transition-all shadow-md cursor-pointer tracking-wide disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Go Live & Share
             </button>
@@ -427,96 +427,71 @@ export default function DashboardPage({ userSession, onLogout }) {
               }}
               className="h-9 bg-[#1e1b4b] hover:bg-[#2e2a75] text-[#c7d2fe] border border-[#4338ca] text-xs font-bold px-4 rounded-lg transition-all cursor-pointer"
             >
-              📋 Copy Room Link
+              Copy Room Link
             </button>
           )}
 
-          {/* Environment Custom Dropdown Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setShowLangDropdown(!showLangDropdown)}
-              className="flex items-center justify-between bg-[#13131f] border border-[#1f1f2e] hover:border-slate-700 px-3 rounded-lg h-9 text-xs font-semibold text-white gap-2 transition-all cursor-pointer min-w-[150px]"
-            >
-              <div className="flex flex-col text-left">
-                <span className="text-[8px] text-slate-500 font-bold tracking-wider uppercase block leading-none">Environment</span>
-                <span className="text-slate-200 mt-0.5 block">{DISPLAY_LANG_MAP[language]}</span>
-              </div>
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 1l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-
-            {showLangDropdown && (
-              <div className="absolute right-0 mt-1 w-full bg-[#11111a] border border-[#1b1b26] rounded-lg shadow-2xl z-50 overflow-hidden py-1 animate-fadeIn">
-                {Object.keys(DISPLAY_LANG_MAP).map((langKey) => (
-                  <button
-                    key={langKey}
-                    onClick={() => handleLanguageChange(langKey)}
-                    className={`w-full text-left px-4 py-2 text-xs font-medium transition-colors cursor-pointer flex items-center justify-between ${
-                      language === langKey ? 'bg-[#252538] text-purple-400 font-bold' : 'text-slate-300 hover:bg-white/5'
-                    }`}
-                  >
-                    {DISPLAY_LANG_MAP[langKey]}
-                    {language === langKey && <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <label className="h-9 bg-[#1a1926] hover:bg-[#25233c] border border-[#312e54] text-slate-200 text-xs font-semibold px-3.5 rounded-lg cursor-pointer transition-colors flex items-center justify-center shrink-0">
-            Upload File
-            <input type="file" onChange={handleLocalFileUpload} className="hidden" />
-          </label>
-
           <div className="h-4 w-[1px] bg-[#1f1f2e] mx-1" />
-
-          <button onClick={onLogout} className="text-slate-400 hover:text-red-400 p-1.5 rounded-lg transition-colors cursor-pointer" title="Sign Out">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          <button onClick={onLogout}
+            title="Sign Out"
+            className="h-9 w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 cursor-pointer"
+          >
+            <FiLogOut size={18} />
           </button>
         </div>
       </header>
 
       {/* CORE WORKSPACE CONTENT BOX AREA */}
       <div className="flex-1 flex overflow-hidden relative">
-        <aside className="w-16 border-r border-[#1b1b24] bg-[#09090e] flex flex-col justify-between py-4 shrink-0 items-center">
-          <div className="flex flex-col gap-5 w-full items-center">
-            {['Files', 'Search', 'Git', 'Debug', 'Ext'].map((icon) => (
-              <button
-                key={icon}
-                onClick={() => setActiveIcon(activeDockIcon === icon ? '' : icon)} 
-                className={`flex flex-col items-center justify-center gap-1 w-12 h-12 rounded-xl transition-all cursor-pointer ${
-                  activeDockIcon === icon ? 'bg-[#1b1b2f] text-[#8b5cf6] border border-[#2e2e4f]' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                <span className="text-[10px] font-bold tracking-tight font-sans">{icon}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-col gap-4 items-center w-full">
-            <button className="text-slate-500 hover:text-slate-300 cursor-pointer flex flex-col items-center gap-0.5">
-              <span className="text-[9px] font-bold uppercase tracking-wider">Config</span>
-            </button>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#3b82f6] to-[#8b5cf6] text-white text-xs font-bold flex items-center justify-center border border-white/10 shadow-md">
-              U
+      
+      {activeDockIcon === 'Files' && (
+        isSidebarCollapsed ? (
+          /* COLLAPSED STATE - Expands automatically when mouse hovers over it */
+          <aside 
+            onMouseEnter={() => setIsSidebarCollapsed(false)}
+            className="w-14 border-r border-[#1b1b24] bg-[#0c0c14] flex flex-col items-center py-4 shrink-0 transition-all duration-300 ease-in-out cursor-pointer"
+            title="Hover to expand explorer"
+          >
+            <div className="w-10 h-10 flex items-center justify-center text-purple-400 bg-[#181821] border border-[#2c2c3d] rounded-xl shadow-md">
+              <FaRegFileCode className="text-xl" />
             </div>
-          </div>
-        </aside>
+          </aside>
+        ) : (
+          /* EXPANDED STATE - Collapses automatically when mouse leaves the panel area */
+          <aside 
+            onMouseLeave={() => setIsSidebarCollapsed(true)}
+            className="w-56 border-r border-[#1b1b24] bg-[#0c0c14] flex flex-col shrink-0 transition-all duration-300 ease-in-out select-none"
+          >
+            
 
-        {/* Sliding Drawer File Explorer Panel */}
-        {activeDockIcon === 'Files' && (
-          <aside className="w-56 border-r border-[#1b1b24] bg-[#0c0c14] flex flex-col shrink-0 transition-all duration-200">
-            <div className="p-4 border-b border-[#1b1b24] flex items-center justify-between select-none">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Workspace Explorer</span>
-              <button 
-                onClick={() => setShowNewFileModal(true)}
-                className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded font-bold hover:bg-purple-500/20 transition-all cursor-pointer"
-              >
-                + New File
-              </button>
+            <div className="p-4 pb-2 flex items-center justify-between">
+              <span className="text-md font-bold text-slate-500 ">Files</span>
+              <div className="flex overflow-hidden rounded-xl border border-[#2c2c3d] bg-[#181821]">
+                <button
+                  onClick={() => setShowNewFileModal(true)}
+                  className="w-8 h-8 flex items-center justify-center text-purple-400 hover:bg-[#242432] transition-colors border-r border-[#2c2c3d] cursor-pointer"
+                  title="New File"
+                >
+                  <FiPlus className="text-base" />
+                </button>
+
+                <label
+                  className="w-8 h-8 flex items-center justify-center text-slate-300 hover:bg-[#242432] transition-colors cursor-pointer"
+                  title="Upload File"
+                >
+                  <IoCloudUploadOutline className="text-base" />
+                  <input
+                    type="file"
+                    onChange={handleLocalFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
               {fileList.length === 0 ? (
-                <div className="text-[11px] text-slate-600 p-2 italic">Workspace empty. Click New File to start.</div>
+                <div className="text-[11px] text-slate-600 p-2 italic">Workspace empty.</div>
               ) : (
                 fileList.map((file) => (
                   <button
@@ -528,108 +503,168 @@ export default function DashboardPage({ userSession, onLogout }) {
                         : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                     }`}
                   >
-                    <span className="truncate">📄 {file.fileName}</span>
-                    <span className="text-[9px] opacity-40 font-mono text-slate-500">{file.language}</span>
+                    <span className="truncate">{file.fileName}</span>
                   </button>
                 ))
               )}
             </div>
           </aside>
-        )}
+        )
+      )}
 
         <main className="flex-1 flex flex-col lg:flex-row p-3 gap-3 overflow-hidden bg-[#06060a]">
           <section className="flex-1 rounded-2xl border border-[#1b1b24] bg-[#0c0c12] overflow-hidden flex flex-col relative shadow-xl">
-            <div className="h-10 bg-[#09090e] border-b border-[#1b1b24] flex items-center justify-between px-4 shrink-0">
-              <div className="flex items-center gap-2 bg-[#0c0c12] border-t border-x border-[#1b1b24] h-full px-4 rounded-t-lg text-xs font-semibold text-[#8b5cf6] border-t-2 border-t-[#8b5cf6]">
-                <span>📄 {fileName}</span>
-                {roomId && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse ml-1" />}
-              </div>
-              <div className="text-[10px] text-slate-500 font-mono tracking-wider">
-                UTF-8 &nbsp;&bull;&nbsp; {language.toUpperCase()}
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 relative bg-[#0c0c12]">
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language={language === 'javascript' ? 'javascript' : language === 'python' ? 'python' : language === 'java' ? 'java' : 'cpp'}
-                value={activeTab === 'editor' ? editorCode : fileCode}
-                onChange={(val) => activeTab === 'editor' && setEditorCode(val || '')}
-                onMount={handleEditorDidMount}
-                options={{
-                  fontSize: 13,
-                  fontFamily: "JetBrains Mono, Fira Code, Menlo, Monaco, Consolas, monospace",
-                  minimap: { enabled: false },
-                  padding: { top: 16 },
-                  smoothScrolling: true,
-                  cursorBlinking: "smooth",
-                  lineHeight: 22,
-                  readOnly: activeTab === 'upload',
-                  backgroundColor: '#0c0c12'
-                }}
-              />
-
-              <div className="absolute bottom-6 right-6 z-10">
-                <button
-                  onClick={handleRunCompiler}
-                  disabled={isExecuting}
-                  className={`h-11 px-6 rounded-full font-bold text-xs uppercase tracking-wider text-white shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer ${
-                    isExecuting 
-                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
-                      : 'bg-gradient-to-r from-[#7c3aed] to-[#6366f1] hover:scale-105 border border-[#8b5cf6]/40 shadow-indigo-500/20'
+            
+            {/* MULTI-TAB CONTROLLER BAR */}
+            <div className="h-10 bg-[#1f1f1f] border-b border-[#1b1b24] flex items-end px-2 gap-1 shrink-0 overflow-x-auto scrollbar-none">
+              {openTabs.map((tab) => (
+                <div
+                  key={tab.fileName}
+                  onClick={() => {
+                    if (fileName === tab.fileName) return;
+                    // Cache outgoing edits
+                    if (editorRef.current) {
+                      const currentCode = editorRef.current.getValue();
+                      setFileList(prev => prev.map(f => f.fileName === fileName ? { ...f, codeContent: currentCode } : f));
+                    }
+                    
+                    setFileName(tab.fileName);
+                    setLanguage(tab.language);
+                    
+                    const matchedFile = fileList.find(f => f.fileName === tab.fileName);
+                    const targetCode = matchedFile ? matchedFile.codeContent : tab.codeContent;
+                    setEditorCode(targetCode);
+                    
+                    if (editorRef.current) {
+                      editorRef.current.setValue(targetCode);
+                    }
+                    if (roomId && editorRef.current) {
+                      initializeYjsSync(editorRef.current, tab.fileName, tab.language);
+                    }
+                  }}
+                  className={`flex items-center gap-3 h-8 px-3 rounded-xl mb-1 text-xs font-medium transition-all duration-150 border-t border-x cursor-pointer ${
+                    fileName === tab.fileName
+                      ? 'bg-[#0c0c12] border-[#1b1b24] text-white font-semibold'
+                      : 'bg-[#0d0d14]/40 border-transparent text-slate-500 hover:bg-[#161622]/60 hover:text-slate-300'
                   }`}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                  {isExecuting ? "Executing..." : "Run Code"}
-                </button>
-              </div>
+                  <span className="truncate max-w-[100px]">{tab.fileName}</span>
+                  {roomId && fileName === tab.fileName && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                  )}
+                  <button
+                    onClick={(e) => handleCloseTab(e, tab)}
+                    className="flex h-4 w-4 items-center justify-center rounded text-gray-500 hover:bg-red-500/20 hover:text-red-400 transition-all duration-150"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {openTabs.length === 0 && (
+                <span className="text-[11px] text-slate-600 italic px-2 mb-2">No active tabs open</span>
+              )}
+            </div>
+
+            {/* EDITOR CANVAS WINDOW */}
+            <div className="flex-1 min-h-0 relative bg-[#0c0c12]">
+              {fileName ? (
+                <Editor
+                  height="100%"
+                  theme="vs-dark"
+                  language={language === 'javascript' ? 'javascript' : language === 'python' ? 'python' : language === 'java' ? 'java' : 'cpp'}
+                  value={activeTab === 'editor' ? editorCode : fileCode}
+                  onChange={(val) => activeTab === 'editor' && setEditorCode(val || '')}
+                  onMount={handleEditorDidMount}
+                  options={{
+                    fontSize: 13,
+                    fontFamily: "JetBrains Mono, Fira Code, Menlo, Monaco, Consolas, monospace",
+                    minimap: { enabled: false },
+                    padding: { top: 10 },
+                    smoothScrolling: true,
+                    cursorBlinking: "smooth",
+                    lineHeight: 21,
+                    readOnly: activeTab === 'upload',
+                    backgroundColor: '#0c0c12',
+                  }}
+                />
+              ) : (
+                <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-slate-600 bg-[#0c0c12]">
+                  <FaCode className="text-3xl opacity-20" />
+                  <p className="text-xs italic">Select a file from the explorer pane to start coding</p>
+                </div>
+              )}
+
+              {fileName && (
+                <div className="flex gap-2 absolute bottom-6 right-6 z-10">
+                  <button
+                    onClick={handleTriggerAiAnalysis}
+                    disabled={isAnalyzing}
+                    className={`h-10 px-6 rounded-full font-bold text-xs uppercase tracking-wider text-white shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer ${
+                      isAnalyzing
+                        ? "bg-slate-800 text-slate-500 cursor-not-allowed opacity-50"
+                        : "bg-gradient-to-r from-[#7c3aed] to-[#6366f1] hover:scale-105 border border-[#8b5cf6]/40 shadow-indigo-500/20 hover:shadow-indigo-500/40"
+                    }`}
+                  >
+                    {isAnalyzing ? "Auditing..." : "Analyze with AI"}
+                  </button>
+                  <button
+                    onClick={handleRunCompiler}
+                    disabled={isExecuting}
+                    className={`h-11 px-6 rounded-full font-bold text-xs uppercase tracking-wider text-white shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer ${
+                      isExecuting 
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' 
+                        : 'bg-gradient-to-r from-[#7c3aed] to-[#6366f1] hover:scale-105 border border-[#8b5cf6]/40 shadow-indigo-500/20'
+                    }`}
+                  >
+                    {isExecuting ? "Executing..." : "Run Code"}
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
+          {/* INPUT/OUTPUT TERMINAL SPLIT PANEL */}
           <section className="w-full lg:w-[420px] flex flex-col gap-3 shrink-0 h-full overflow-hidden">
             <div className="flex-1 bg-[#0c0c12] rounded-2xl border border-[#1b1b24] p-4 flex flex-col shadow-lg min-h-[140px]">
               <div className="flex items-center gap-2 mb-2 select-none shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Standard Input (stdin)</h4>
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Input</h4>
               </div>
               <textarea
                 value={stdin}
                 onChange={(e) => setStdin(e.target.value)}
-                className="flex-1 w-full bg-[#07070b] text-slate-300 border border-[#1b1b24] rounded-xl p-3 font-mono text-xs focus:outline-none focus:border-[#312e4f] transition-all resize-none shadow-inner leading-relaxed placeholder:text-slate-600"
-                placeholder="Inject custom program runtime arguments or structural simulation mock data rows here..."
+                disabled={!fileName}
+                className="flex-1 w-full bg-[#07070b] text-slate-300 border border-[#1b1b24] rounded-xl p-3 font-mono text-xs focus:outline-none focus:border-[#312e4f] transition-all resize-none shadow-inner leading-relaxed placeholder:text-slate-600 disabled:opacity-40"
+                placeholder={fileName ? "Enter program input..." : "No active program environment loaded"}
               />
             </div>
 
             <div className="flex-[1.6] bg-[#07070b] rounded-2xl border border-[#1b1b24] p-4 flex flex-col shadow-2xl overflow-hidden relative">
               <div className="flex items-center justify-between border-b border-[#1b1b24] pb-2 mb-2.5 select-none shrink-0">
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse" />
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Console Output Shell</h4>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">Output</h4>
                 </div>
                 <button
-                  onClick={() => setOutput('$ Terminal wiped clean.')}
+                  onClick={() => setOutput('')}
                   className="text-[10px] text-slate-500 hover:text-slate-300 font-semibold uppercase tracking-wide px-2 py-0.5 rounded hover:bg-white/5 transition-colors cursor-pointer"
                 >
                   Clear Output
                 </button>
               </div>
               
-              <div className="flex-1 overflow-y-auto font-mono text-xs text-[#10b981] leading-relaxed p-3 bg-black/30 rounded-xl border border-white/[0.01] select-text scrollbar-thin">
+              <div className="flex-1 overflow-y-auto font-mono text-xs text-gray-500 leading-relaxed p-3 bg-black/30 rounded-xl border border-white/[0.01] select-text scrollbar-thin">
                 {output}
               </div>
             </div>
           </section>
-
         </main>
       </div>
 
-      {/* Absolute Center Modal Window to Handle New Filenames */}
+      {/* NEW FILE MODAL WINDOW */}
       {showNewFileModal && (
         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center">
           <div className="bg-[#12111f] border border-[#1b1b2c] p-6 rounded-xl w-full max-w-sm text-white shadow-2xl mx-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 mb-2">Create File Asset</h3>
-            <p className="text-slate-500 text-[11px] mb-4">Include target extension tags (e.g. .cpp, .py, .js, .java) to instantly map compile profiles.</p>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300 mb-2">Create New File</h3>
+            <p className="text-slate-500 text-[11px] mb-4">Include file extension tags (e.g. .cpp, .py, .js, .java).</p>
             <form onSubmit={handleCreateNewFileSubmit} className="space-y-4">
               <input 
                 type="text" 
@@ -649,7 +684,7 @@ export default function DashboardPage({ userSession, onLogout }) {
         </div>
       )}
 
-      {/* AI DRAWER SECTION */}
+      {/* AI ASSESSMENT DRAWER PANEL */}
       {showAiDrawer && (
         <div className="absolute right-0 top-0 h-full w-full sm:w-[500px] bg-[#0c0c14] border-l border-[#1b1b24] shadow-2xl z-50 flex flex-col animate-slideIn">
           <div className="h-14 border-b border-[#1b1b24] px-6 flex items-center justify-between bg-[#09090e] shrink-0">
