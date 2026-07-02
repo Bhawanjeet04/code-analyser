@@ -1,6 +1,12 @@
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    trim: true,
+    unique: true,
+    sparse: true // Allows Google users to safely skip this entry on initial token generation
+  },
   email: {
     type: String,
     required: true,

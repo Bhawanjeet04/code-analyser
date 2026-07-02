@@ -1,3 +1,4 @@
+// Frontend/src/views/DashboardPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
@@ -6,9 +7,10 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { MonacoBinding } from 'y-monaco';
 import { IoCloudUploadOutline } from "react-icons/io5";
-import { FiPlus, FiLogOut, FiEdit2, FiTrash2, FiDownload } from "react-icons/fi";
-import { FaRegFileCode, FaCode, FaUserCircle } from "react-icons/fa";
+import { FiPlus, FiEdit2, FiTrash2, FiDownload } from "react-icons/fi";
+import { FaRegFileCode, FaCode } from "react-icons/fa";
 import { BsThreeDotsVertical } from "react-icons/bs";
+import ProfileDropdown from '../components/ProfileDropdown'; // 🚀 IMPORTED COMPONENT
 
 const BOILERPLATE_MAP = {
   cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from C++" << endl;\n    return 0;\n}',
@@ -39,7 +41,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
   const [showNewFileModal, setShowNewFileModal] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // File Context Actions States
   const [activeMenuFileId, setActiveMenuFileId] = useState(null);
@@ -51,7 +52,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
   const editorRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
-  const dropdownRef = useRef(null);
   const fileMenuRef = useRef(null);
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -62,9 +62,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
   // Outside click listeners
   useEffect(() => {
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowProfileDropdown(false);
-      }
       if (fileMenuRef.current && !fileMenuRef.current.contains(event.target)) {
         setActiveMenuFileId(null);
       }
@@ -115,9 +112,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
             editorRef.current.setValue(targetFile.codeContent);
           }
         } else if (data.files.length === 0) {
-          // Workspace is genuinely empty — clear stale state so the
-          // auto-save debouncer doesn't recreate a deleted file from
-          // leftover fileName/editorCode defaults.
           setFileName('');
           setLanguage('');
           setEditorCode('');
@@ -149,7 +143,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
     };
   }, [roomId, userSession]);
 
-  // Persist which tabs are open (and which is active) so a page refresh restores them
   useEffect(() => {
     if (!isHydrated || !userSession) return;
     try {
@@ -357,11 +350,8 @@ export default function DashboardPage({ userSession, username, onLogout }) {
     e.preventDefault();
     if (!renameInputValue.trim() || !renameTargetFile) return;
 
-    // Isolate the base extension from the target file object
     const parts = renameTargetFile.fileName.split('.');
     const ext = parts.length > 1 ? parts.pop() : '';
-    
-    // Build updated file identifier, strictly forcing extension structure constraints
     const updatedName = ext ? `${renameInputValue.trim()}.${ext}` : renameInputValue.trim();
 
     try {
@@ -397,7 +387,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
  const handleDeleteFile = async (file) => {
     if (!confirm(`Are you sure you want to delete ${file.fileName}?`)) return;
 
-    // 1. Optimistically remove from UI states right away so it disappears instantly
     setFileList(prev => prev.filter(f => f.fileName !== file.fileName));
     setOpenTabs(prev => prev.filter(t => t.fileName !== file.fileName));
     
@@ -409,8 +398,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
     }
 
     try {
-      // Send via DELETE request. We supply BOTH query parameters and body 
-      // to guarantee compatibility with any backend parser configuration.
       const queryString = `?userId=${userSession}&roomId=${roomId || ''}&fileName=${encodeURIComponent(file.fileName)}`;
       const res = await fetch(`${API_BASE}/api/code/delete${queryString}`, {
         method: 'DELETE',
@@ -425,12 +412,10 @@ export default function DashboardPage({ userSession, username, onLogout }) {
       if (!res.ok) {
         const errData = await res.json();
         console.error("Backend failed to delete file:", errData.error);
-        // Re-fetch directory to sync back if backend explicitly rejected the deletion
         fetchWorkspaceDirectory(false);
       }
     } catch (err) {
       console.error("Network error during deletion:", err);
-      // Re-fetch directory to restore items if network failed
       fetchWorkspaceDirectory(false);
     } finally {
       setActiveMenuFileId(null);
@@ -476,11 +461,9 @@ export default function DashboardPage({ userSession, username, onLogout }) {
       const content = event.target.result;
       const newFileObj = { fileName: name, language: derivedLang, codeContent: content };
 
-      // Add to sidebar file list and open tabs immediately (avoid duplicates)
       setFileList(prev => prev.some(f => f.fileName === name) ? prev : [...prev, newFileObj]);
       setOpenTabs(prev => prev.some(t => t.fileName === name) ? prev : [...prev, newFileObj]);
 
-      // Make it the active, editable file (not the separate read-only 'upload' preview)
       setFileName(name);
       setLanguage(derivedLang);
       setEditorCode(content);
@@ -512,8 +495,6 @@ export default function DashboardPage({ userSession, username, onLogout }) {
       }
     };
     reader.readAsText(file);
-
-    // Reset the input so uploading the same file again still fires onChange
     e.target.value = '';
   };
 
@@ -590,7 +571,7 @@ export default function DashboardPage({ userSession, username, onLogout }) {
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
             <FaCode className="text-xl text-[#8B5CF6]" />
             <span className="text-sm font-bold tracking-tight text-white font-sohne">
-              CodeLab
+              CoderHub
             </span>
           </div>
         </div>
@@ -618,32 +599,8 @@ export default function DashboardPage({ userSession, username, onLogout }) {
 
           <div className="h-4 w-[1px] bg-[#1f1f2e] mx-1" />
           
-          {/* USER PROFILE DROPDOWN */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-              title="User Account Menu"
-              className="h-9 w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 transition-all duration-200 cursor-pointer focus:outline-none"
-            >
-              <FaUserCircle size={22} />
-            </button>
-
-            {showProfileDropdown && (
-              <div className="absolute right-0 mt-2 w-48 rounded-lg bg-[#12111f] border border-[#1b1b2c] p-1 shadow-2xl z-50 animate-fadeIn">
-                <div className="px-3 py-2 border-b border-[#1b1b2c] text-left">
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Signed in as</p>
-                  <p className="text-xs font-medium text-slate-200 truncate mt-0.5">{username || 'Active User'}</p>
-                </div>
-                <button
-                  onClick={onLogout}
-                  className="w-full h-9 mt-1 flex items-center gap-2 px-3 text-left text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors duration-150 cursor-pointer"
-                >
-                  <FiLogOut size={14} />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* 🚀 INJECTED PROFILE COMPONENT */}
+          <ProfileDropdown onLogout={onLogout} />
         </div>
       </header>
 

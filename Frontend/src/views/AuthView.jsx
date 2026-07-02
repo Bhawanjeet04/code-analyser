@@ -11,6 +11,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 export default function AuthView({ mode = "login", onAuthSuccess }) {
   const navigate = useNavigate(); 
   const [isLogin, setIsLogin] = useState(mode !== "signup");
+  const [username, setUsername] = useState(""); // 🚀 NEW: State for registration tracking
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -20,18 +21,25 @@ export default function AuthView({ mode = "login", onAuthSuccess }) {
     setIsLogin(mode !== "signup");
   }, [mode]);
 
+// Frontend/src/views/AuthView.jsx
+// Replace your existing handleSubmit function with this one:
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+    
+    const requestPayload = isLogin 
+      ? { email, password } 
+      : { username, email, password }; 
 
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(requestPayload),
       });
 
       const data = await res.json();
@@ -41,7 +49,17 @@ export default function AuthView({ mode = "login", onAuthSuccess }) {
         return;
       }
 
+      const activeUserToken = data.user?.username || username || email.split('@')[0];
+      const activeAvatarToken = data.user?.avatar || "";
+
+      localStorage.setItem('moora_username', activeUserToken);
+      localStorage.setItem('moora_avatar', activeAvatarToken); // 🚀 Cache Avatar Emoji string
+
       onAuthSuccess?.(data.userId || data.user?.id);
+      
+      navigate("/", { replace: true });
+      return;
+
     } catch (err) {
       setError("Could not reach the server. Is the backend running?");
     } finally {
@@ -68,7 +86,6 @@ export default function AuthView({ mode = "login", onAuthSuccess }) {
             {isLogin ? "Welcome back" : "Create your account"}
           </h1>
 
-
           <button type="button" onClick={handleGoogleFederation}
             className="w-full flex items-center justify-center gap-3 h-11 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all cursor-pointer mb-5"
           >
@@ -83,6 +100,19 @@ export default function AuthView({ mode = "login", onAuthSuccess }) {
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* 🚀 NEW: Conditionally displayed Username Input Area for Sign Up fields */}
+            {!isLogin && (
+              <Input
+                label="Username"
+                type="text"
+                placeholder="coder_hub_user"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="!bg-slate-50 !border-slate-300 !text-slate-900 text-sm h-10 rounded-lg pl-2"
+              />
+            )}
+
             <Input
               label="Email Address"
               type="email"
@@ -92,6 +122,7 @@ export default function AuthView({ mode = "login", onAuthSuccess }) {
               required
               className="!bg-slate-50 !border-slate-300 !text-slate-900 text-sm h-10 rounded-lg pl-2"
             />
+            
             <Input
               label="Password"
               type="password"

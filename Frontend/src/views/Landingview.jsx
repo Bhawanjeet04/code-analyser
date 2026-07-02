@@ -1,3 +1,4 @@
+// Frontend/src/views/LandingView.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaCode } from "react-icons/fa6";
@@ -5,7 +6,6 @@ import { FaCode } from "react-icons/fa6";
 const NAV_LINKS = [];
 const CODE_TABS = ["Hello.cpp"];
 
-// Only show first 7 lines — cropped, no scroll
 const CODE_LINES = [
   { num: 1, content: <span className="text-slate-400">// Imports</span> },
   {
@@ -80,56 +80,105 @@ function Cursor({ label, color }) {
   );
 }
 
-export default function LandingView() {
+export default function LandingView({ userSession, onLogout }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // 🚀 FIXED: Now pulling BOTH the username and the avatar emoji from local storage!
+  const savedUserNameRaw = localStorage.getItem('moora_username') || "User";
+  const savedAvatarRaw = localStorage.getItem('moora_avatar') || "";
+
+  // 🚀 FIXED: Dynamic Badge Logic - Shows the emoji if it exists, otherwise falls back to the first letter
+  const profileDisplayBadge = savedAvatarRaw ? savedAvatarRaw : savedUserNameRaw.charAt(0).toUpperCase();
+
+  const handleWorkspaceActionRedirect = () => {
+    if (userSession) {
+      navigate("/dashboard");
+    } else {
+      navigate("/login");
+    }
+  };
 
   return (
     <div
-      className="h-screen w-screen overflow-hidden font-sans"
+      className="h-screen w-screen overflow-hidden font-sans relative"
       style={{
         background: "linear-gradient(160deg, #0f0f18 0%, #13111f 60%, #1a1430 100%)",
       }}
     >
       <div className="h-full w-full flex flex-col p-3 overflow-hidden">
         <div
-          className="flex-1 rounded-2xl flex flex-col overflow-hidden"
+          className="flex-1 rounded-2xl flex flex-col overflow-hidden relative"
           style={{
             boxShadow: "0 0 0 1px rgba(140,120,255,0.18), 0 0 60px 10px rgba(120,100,255,0.08)",
             background: "linear-gradient(160deg, #0f0f1a 0%, #110f1e 100%)",
           }}
         >
-          {/* NAV */}
+          {/* NAV BAR */}
           <nav className="flex items-center justify-between px-8 py-4 relative z-10 shrink-0">
             <div className="flex items-center gap-2.5">
               <FaCode className="text-xl text-[#8B5CF6]" />
-              <span className="text-white text-xl font-semibold tracking-tight">CodeLab</span>
+              <span className="text-white text-xl font-semibold tracking-tight">CoderHub</span>
             </div>
 
-            <ul className="hidden md:flex items-center gap-8">
-              {NAV_LINKS.map((link) => (
-                <li key={link}>
-                  <a href="#" className="text-slate-400 hover:text-white text-sm font-medium transition-colors duration-200">
-                    {link}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            {userSession ? (
+              <div 
+                className="relative z-30"
+                onMouseEnter={() => setShowProfileMenu(true)}
+                onMouseLeave={() => setShowProfileMenu(false)}
+              >
+                {/* 🚀 FIXED: Changed {userInitialBadge} to {profileDisplayBadge} inside the circle */}
+                <div
+                  onClick={() => navigate("/")}
+                  className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#3b82f6] to-[#8b5cf6] text-white text-sm font-extrabold flex items-center justify-center border-2 border-white/20 shadow-2xl scale-100 hover:scale-105 transition-all select-none duration-150 cursor-pointer"
+                >
+                  {profileDisplayBadge}
+                </div>
 
-            <button
-              onClick={() => navigate("/login")}
-              className="border border-slate-600 hover:border-slate-400 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all duration-200 hover:bg-white/5 cursor-pointer"
-            >
-              Log in
-            </button>
+                {/* Dropdown Menu Overlay */}
+                {showProfileMenu && (
+                  <div className="absolute right-0 top-full pt-2 w-48 animate-fadeIn">
+                    <div className="bg-[#11111a] border border-[#1e1e2f] rounded-xl shadow-2xl overflow-hidden py-1.5">
+                      <div className="px-4 py-2 border-b border-white/[0.04]">
+                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Authenticated User</p>
+                        <p className="text-xs text-white truncate mt-0.5 font-semibold font-mono">{savedUserNameRaw}</p>
+                      </div>
+                      
+                      <button 
+                        onClick={() => navigate('/settings')}
+                        className="w-full text-left px-4 py-2.5 text-xs text-slate-300 hover:bg-white/5 hover:text-white transition-colors cursor-pointer font-medium flex items-center gap-2"
+                      >
+                        ⚙️ Preferences & Settings
+                      </button>
+                      
+                      <div className="h-[1px] bg-white/[0.04] my-1" />
+                      
+                      <button 
+                        onClick={onLogout}
+                        className="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer font-semibold flex items-center gap-2"
+                      >
+                        Log Out Session
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => navigate("/login")}
+                className="border border-slate-600 hover:border-slate-400 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all duration-200 hover:bg-white/5 cursor-pointer"
+              >
+                Log in
+              </button>
+            )}
           </nav>
 
-          {/* HERO */}
+          {/* MAIN HERO VIEWPORT */}
           <main className="relative flex-1 flex flex-col items-center justify-center px-6 pb-0 overflow-hidden">
             <GridBackground />
 
             <div className="relative z-10 text-center max-w-3xl mx-auto w-full flex flex-col items-center">
-              {/* Headline */}
               <h1 className="text-5xl md:text-6xl font-light leading-[1.08] tracking-tight mb-4">
                 <span style={{ color: "#e8d5a3" }}>Great code </span>
                 <span style={{
@@ -140,7 +189,6 @@ export default function LandingView() {
                 }}>comes</span>
                 <br />
                 <span style={{ color: "#e8d5a3" }}>from </span>
-                <span className="inline-block mx-1 align-middle text-5xl md:text-5xl"></span>
                 <span style={{
                   background: "linear-gradient(135deg, #c4b5fd 0%, #a78bfa 50%, #8b7cf8 100%)",
                   WebkitBackgroundClip: "text",
@@ -154,24 +202,23 @@ export default function LandingView() {
                 Solve challenges faster and smarter through collaboration.
               </p>
 
-              {/* CTAs */}
               <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
                 <button
-                  onClick={() => navigate("/signup")}
-                  className="px-7 py-2.5 rounded-lg font-semibold text-sm text-slate-900 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+                  onClick={handleWorkspaceActionRedirect}
+                  className="px-7 py-2.5 rounded-lg font-semibold text-sm text-slate-900 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                   style={{ background: "#e8d5a3" }}
                 >
                   Go To Code Editor
                 </button>
                 <button
-                  onClick={() => navigate("/signup")}
-                  className="px-7 py-2.5 rounded-lg font-semibold text-sm text-white border border-slate-600 hover:border-slate-400 hover:bg-white/5 transition-all duration-200"
+                  onClick={handleWorkspaceActionRedirect}
+                  className="px-7 py-2.5 rounded-lg font-semibold text-sm text-white border border-slate-600 hover:border-slate-400 hover:bg-white/5 transition-all duration-200 cursor-pointer"
                 >
                   Collaborator
                 </button>
               </div>
 
-              {/* CODE EDITOR — cropped, no scroll, fades out at bottom */}
+              {/* MOCK IDE VIEWPORT FRAME */}
               <div
                 className="relative w-full max-w-2xl mx-auto rounded-xl text-left overflow-hidden"
                 style={{
@@ -180,51 +227,18 @@ export default function LandingView() {
                   boxShadow: "0 0 0 1px rgba(140,120,255,0.1), 0 24px 60px rgba(0,0,0,0.6)",
                 }}
               >
-                {/* Tab bar */}
-                <div
-                  className="flex items-center px-3 pt-2 gap-1 border-b border-white/[0.06] shrink-0"
-                  style={{ background: "#0d0d14" }}
-                >
+                <div className="flex items-center px-3 pt-2 gap-1 border-b border-white/[0.06] shrink-0" style={{ background: "#0d0d14" }}>
                   {CODE_TABS.map((tab, i) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(i)}
-                      className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors duration-150 ${
-                        activeTab === i
-                          ? "bg-[#111118] text-slate-200 border-t border-x border-white/[0.08]"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
-                    >
-                      {i === 0 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#f97316" opacity="0.8" />
-                          <text x="2" y="9" fontSize="7" fill="white" fontWeight="bold">js</text>
-                        </svg>
-                      )}
-                      {i === 1 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#3b82f6" opacity="0.8" />
-                          <text x="1.5" y="9" fontSize="6" fill="white" fontWeight="bold">md</text>
-                        </svg>
-                      )}
-                      {i === 2 && (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <rect width="12" height="12" rx="2" fill="#6b7280" opacity="0.8" />
-                          <text x="1.5" y="9" fontSize="6" fill="white" fontWeight="bold">gi</text>
-                        </svg>
-                      )}
-                      {tab}
+                    <button key={tab} onClick={() => setActiveTab(i)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-colors ${activeTab === i ? "bg-[#111118] text-slate-200 border-t border-x border-white/[0.08]" : "text-slate-500 hover:text-slate-300"}`}>
+                      📄 {tab}
                     </button>
                   ))}
                 </div>
 
-                {/* Code lines — no overflow, just cropped */}
                 <div className="pt-3 pb-0 px-2 font-mono text-sm leading-7 select-none">
                   {CODE_LINES.map((line) => (
                     <div key={line.num} className="flex items-center group">
-                      <span className="w-10 text-right text-slate-600 text-xs pr-4 shrink-0">
-                        {line.num}
-                      </span>
+                      <span className="w-10 text-right text-slate-600 text-xs pr-4 shrink-0">{line.num}</span>
                       <span className="flex-1 text-slate-300 whitespace-nowrap">
                         {line.content}
                         {line.cursor === "mike" && <Cursor label="Mike" color="mike" />}
@@ -233,14 +247,7 @@ export default function LandingView() {
                     </div>
                   ))}
                 </div>
-
-                {/* Fade-out gradient at bottom — simulates crop */}
-                <div
-                  className="h-14 w-full"
-                  style={{
-                    background: "linear-gradient(to bottom, transparent, #111118)",
-                  }}
-                />
+                <div className="h-14 w-full" style={{ background: "linear-gradient(to bottom, transparent, #111118)" }} />
               </div>
             </div>
           </main>
