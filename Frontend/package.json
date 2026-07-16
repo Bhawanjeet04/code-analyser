@@ -12,13 +12,16 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.3.1",
+    "lib0": "^0.2.117",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-icons": "^5.7.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.1",
+    "socket.io-client": "^4.8.3",
     "tailwindcss": "^4.3.1",
     "y-monaco": "^0.1.6",
+    "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.31"
   },

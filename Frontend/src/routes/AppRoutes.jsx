@@ -5,6 +5,7 @@ import LandingView from '../views/LandingView';
 import AuthView from '../views/AuthView';
 import DashboardPage from '../views/DashboardPage';
 import SettingsView from '../views/SettingsView'; // 🚀 IMPORTED: Clean Settings Page View
+import LiveRoom from '../views/Liveroom';
 
 export default function AppRoutes() {
   const [userSession, setUserSession] = useState(null);
@@ -54,6 +55,11 @@ export default function AppRoutes() {
       <Route 
         path="/signup" 
         element={<AuthView mode="signup" onAuthSuccess={handleAuthSuccess} />} 
+      />
+
+      <Route 
+        path="/live/:roomId" 
+        element={userSession ? <LiveRoom userSession={userSession} /> : <Navigate to="/login" replace />} 
       />
 
       {/* 🚀 NEW: Dedicated Protected Settings Interface Node Routing Path */}
